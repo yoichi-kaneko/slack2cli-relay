@@ -31,4 +31,7 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'slack' => [
+        'signing_secret' => env('SLACK_SIGNING_SECRET'),
+    ],
 ];
