@@ -33,5 +33,6 @@ return [
 
     'slack' => [
         'signing_secret' => env('SLACK_SIGNING_SECRET'),
+        'cli_command_format' => env('SLACK_CLI_COMMAND_FORMAT'),
     ],
 ];
