@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RelayCli;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -37,8 +38,11 @@ class SlacksController extends Controller
                 ->header('Content-Type', 'text/plain');
         }
 
-        // それ以外は、Slackのリトライ防止のため即座に200を返却
-        // まだ実処理は行わない
+        // それ以外は、Slackのリトライ防止のため200を返却、処理はジョブキューに登録する
+
+        $raw = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        RelayCli::dispatch($raw);
+
         return new JsonResponse(['ok' => true], 200);
     }
 }
