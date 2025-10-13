@@ -118,4 +118,32 @@ final class SlacksControllerTest extends TestCase
         $this->assertSame(['ok' => true], json_decode($response->getContent(), true));
         $this->assertStringContainsString('application/json', (string) $response->headers->get('Content-Type'));
     }
+
+    /**
+     * @test
+     * @return void
+     */
+    public function events_botからの通知はRelayCliをキュー投入せず200でok_trueを返す(): void
+    {
+        Bus::fake();
+
+        $payload = [
+            'type' => 'event_callback',
+            'event' => [
+                'type' => 'message',
+                'subtype' => 'bot_message',
+                'text' => 'I am a bot',
+                'bot_id' => 'B123ABC',
+            ],
+        ];
+        $request = $this->makeJsonRequest($payload);
+
+        $response = $this->runController($request);
+
+        Bus::assertNotDispatched(RelayCli::class);
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertJson($response->getContent());
+        $this->assertSame(['ok' => true], json_decode($response->getContent(), true));
+        $this->assertStringContainsString('application/json', (string) $response->headers->get('Content-Type'));
+    }
 }

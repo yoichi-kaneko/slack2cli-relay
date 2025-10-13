@@ -39,6 +39,23 @@ class SlacksController extends Controller
         }
 
         // それ以外は、Slackのリトライ防止のため200を返却、処理はジョブキューに登録する
+        // botからの通知はループ防止のため処理せず、即200を返却する
+        $event = $payload['event'] ?? null;
+        $isBot = false;
+        if (is_array($event)) {
+            if (!empty($event['bot_id'])) {
+                $isBot = true;
+            } elseif (($event['subtype'] ?? null) === 'bot_message') {
+                $isBot = true;
+            } elseif (is_string($event['user'] ?? null) && str_starts_with($event['user'], 'B')) {
+                // SlackのBotユーザーIDは通常 "B" で始まる
+                $isBot = true;
+            }
+        }
+
+        if ($isBot) {
+            return new JsonResponse(['ok' => true], 200);
+        }
 
         $raw = json_encode($payload, JSON_UNESCAPED_UNICODE);
         RelayCli::dispatch($raw);
