@@ -48,7 +48,8 @@ final class SlacksControllerTest extends TestCase
 
     private function runController(Request $request)
     {
-        $controller = new SlacksController();
+        /** @var SlacksController $controller */
+        $controller = app()->make(SlacksController::class);
 
         return $controller->events($request);
     }

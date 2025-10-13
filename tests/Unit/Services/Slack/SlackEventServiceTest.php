@@ -13,7 +13,7 @@ class SlackEventServiceTest extends TestCase
      * @test
      * @dataProvider provideUrlVerificationPayloads
      * @param array $payload
-     * @param array{ok:bool,bad_request:bool,not_applicable:bool,challenge:?string} $expected
+     * @param array{challenge:bool,bad_request:bool,not_applicable:bool,challenge_value:?string} $expected
      * @return void
      */
     public function handleUrlVerification_全条件分岐を網羅して期待通り判定できること(array $payload, array $expected): void
@@ -25,41 +25,41 @@ class SlackEventServiceTest extends TestCase
 
         $result = $service->handleUrlVerification($payload);
 
-        $this->assertSame($expected['ok'], $result->isOk());
+        $this->assertSame($expected['challenge'], $result->isChallenge());
         $this->assertSame($expected['bad_request'], $result->isBadRequest());
         $this->assertSame($expected['not_applicable'], $result->isNotApplicable());
-        $this->assertSame($expected['challenge'], $result->challenge);
+        $this->assertSame($expected['challenge_value'], $result->getChallenge());
     }
 
     /**
-     * @return array<string, array{0: array, 1: array{ok:bool,bad_request:bool,not_applicable:bool,challenge:?string}}>
+     * @return array<string, array{0: array, 1: array{challenge:bool,bad_request:bool,not_applicable:bool,challenge_value:?string}}>
      */
     public static function provideUrlVerificationPayloads(): array
     {
         return [
             'typeが未設定' => [
                 [],
-                ['ok' => false, 'bad_request' => false, 'not_applicable' => true, 'challenge' => null],
+                ['challenge' => false, 'bad_request' => false, 'not_applicable' => true, 'challenge_value' => null],
             ],
             'typeがurl_verification以外' => [
                 ['type' => 'event_callback'],
-                ['ok' => false, 'bad_request' => false, 'not_applicable' => true, 'challenge' => null],
+                ['challenge' => false, 'bad_request' => false, 'not_applicable' => true, 'challenge_value' => null],
             ],
             'challenge未設定' => [
                 ['type' => 'url_verification'],
-                ['ok' => false, 'bad_request' => true, 'not_applicable' => false, 'challenge' => null],
+                ['challenge' => false, 'bad_request' => true, 'not_applicable' => false, 'challenge_value' => null],
             ],
             'challengeが空文字' => [
                 ['type' => 'url_verification', 'challenge' => ''],
-                ['ok' => false, 'bad_request' => true, 'not_applicable' => false, 'challenge' => null],
+                ['challenge' => false, 'bad_request' => true, 'not_applicable' => false, 'challenge_value' => null],
             ],
             'challengeが文字列以外' => [
                 ['type' => 'url_verification', 'challenge' => 123],
-                ['ok' => false, 'bad_request' => true, 'not_applicable' => false, 'challenge' => null],
+                ['challenge' => false, 'bad_request' => true, 'not_applicable' => false, 'challenge_value' => null],
             ],
             '正常' => [
                 ['type' => 'url_verification', 'challenge' => 'challenge-xyz'],
-                ['ok' => true, 'bad_request' => false, 'not_applicable' => false, 'challenge' => 'challenge-xyz'],
+                ['challenge' => true, 'bad_request' => false, 'not_applicable' => false, 'challenge_value' => 'challenge-xyz'],
             ],
         ];
     }

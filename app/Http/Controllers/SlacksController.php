@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Jobs\RelayCli;
+use App\Services\Slack\SlackEventService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -14,6 +15,11 @@ use Illuminate\Http\Response;
  */
 class SlacksController extends Controller
 {
+    public function __construct(
+        private readonly SlackEventService $service,
+    ) {
+    }
+
     /**
      *
      * @param Request $request
@@ -25,40 +31,21 @@ class SlacksController extends Controller
         $payload = $request->json()->all();
 
         // typeがurl_verificationならchallengeをそのまま返す
-        if (($payload['type'] ?? null) === 'url_verification') {
-            $challenge = $payload['challenge'] ?? null;
-
-            // challengeが無い/不正なら400
-            if (!is_string($challenge) || $challenge === '') {
-                return response('Bad Request', 400);
-            }
-
-            // Slack仕様に従い、challenge文字列をそのまま返却（Content-Type: text/plain）
-            return response($challenge, 200)
-                ->header('Content-Type', 'text/plain');
+        $verify = $this->service->handleUrlVerification($payload);
+        if ($verify->isChallenge()) {
+            return response($verify->getChallenge(), 200)->header('Content-Type', 'text/plain');
+        }
+        if ($verify->isBadRequest()) {
+            return response('Bad Request', 400);
         }
 
-        // それ以外は、Slackのリトライ防止のため200を返却、処理はジョブキューに登録する
         // botからの通知はループ防止のため処理せず、即200を返却する
-        $event = $payload['event'] ?? null;
-        $isBot = false;
-        if (is_array($event)) {
-            if (!empty($event['bot_id'])) {
-                $isBot = true;
-            } elseif (($event['subtype'] ?? null) === 'bot_message') {
-                $isBot = true;
-            } elseif (is_string($event['user'] ?? null) && str_starts_with($event['user'], 'B')) {
-                // SlackのBotユーザーIDは通常 "B" で始まる
-                $isBot = true;
-            }
-        }
-
-        if ($isBot) {
+        if ($this->service->shouldIgnoreAsBot($payload)) {
             return new JsonResponse(['ok' => true], 200);
         }
 
-        $raw = json_encode($payload, JSON_UNESCAPED_UNICODE);
-        RelayCli::dispatch($raw);
+        // それ以外はリレイを非同期実行（Serviceへ委譲）
+        $this->service->relayAsync($payload);
 
         return new JsonResponse(['ok' => true], 200);
     }

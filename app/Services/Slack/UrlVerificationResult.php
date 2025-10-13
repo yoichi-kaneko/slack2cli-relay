@@ -7,14 +7,14 @@ namespace App\Services\Slack;
 final class UrlVerificationResult
 {
     private function __construct(
-        public readonly string $status, // ok | bad_request | not_applicable
+        public readonly string $status, // challenge | bad_request | not_applicable
         public readonly ?string $challenge = null
     ) {
     }
 
-    public function isOk(): bool
+    public function isChallenge(): bool
     {
-        return $this->status === 'ok';
+        return $this->status === 'challenge';
     }
     public function isBadRequest(): bool
     {
@@ -25,9 +25,14 @@ final class UrlVerificationResult
         return $this->status === 'not_applicable';
     }
 
-    public static function ok(string $challenge): self
+    public function getChallenge(): ?string
     {
-        return new self('ok', $challenge);
+        return $this->challenge;
+    }
+
+    public static function challenge(string $challenge): self
+    {
+        return new self('challenge', $challenge);
     }
     public static function badRequest(): self
     {

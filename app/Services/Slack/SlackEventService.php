@@ -23,7 +23,7 @@ final class SlackEventService
         if (!is_string($challenge) || $challenge === '') {
             return UrlVerificationResult::badRequest();
         }
-        return UrlVerificationResult::ok($challenge);
+        return UrlVerificationResult::challenge($challenge);
     }
 
     public function shouldIgnoreAsBot(array $payload): bool
