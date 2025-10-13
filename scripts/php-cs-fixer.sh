@@ -1,0 +1,1 @@
+( git diff --name-only --diff-filter=ACMRTUXB HEAD; git ls-files --others --exclude-standard )   | sort -u | grep -E '\.php$'   | xargs -r ./vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.php --using-cache=no --path-mode=intersection

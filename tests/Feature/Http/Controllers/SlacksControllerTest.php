@@ -7,16 +7,25 @@ namespace Tests\Feature\Http\Controllers;
 use App\Http\Controllers\SlacksController;
 use App\Jobs\RelayCli;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
 final class SlacksControllerTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Slackの署名シークレットを設定（Middleware通過用）
+        config()->set('services.slack.signing_secret', 'test_secret');
+    }
+
     private function makeJsonRequest(array $payload): Request
     {
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
 
-        return Request::create(
+        $request = Request::create(
             '/slack/events',
             'POST',
             [],
@@ -25,6 +34,16 @@ final class SlacksControllerTest extends TestCase
             ['CONTENT_TYPE' => 'application/json'],
             $body
         );
+
+        // Slack認証用ヘッダを付与
+        $timestamp = Carbon::now()->timestamp;
+        $request->headers->set('X-Slack-Request-Timestamp', (string) $timestamp);
+
+        $baseString = "v0:{$timestamp}:{$body}";
+        $signature = 'v0=' . hash_hmac('sha256', $baseString, (string) config('services.slack.signing_secret'));
+        $request->headers->set('X-Slack-Signature', $signature);
+
+        return $request;
     }
 
     private function runController(Request $request)
