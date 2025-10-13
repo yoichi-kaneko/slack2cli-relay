@@ -1,66 +1,56 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Slack → CLI Relay (AIツール連携)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+SlackのEvent APIから受信したイベントを、サーバ側で検証・受理し、バックグラウンドでAI系CLIツール（例: Claude Code 等）へリレー転送するためのシンプルなブリッジです。  
+本READMEは骨子（アウトライン）です。詳細手順は後日追記予定です。
 
-## About Laravel
+## 1. 概要
+- 目的: Slackからの通知を外部CLIツールへ中継し、チャットから開発支援/自動化タスクを実行できるようにする。
+- 方式: Slack Event API → 署名検証 → キュー投入 → CLI実行 → 結果処理（任意）。
+- 特徴: CLIツールは差し替え可能／キュー駆動で非同期処理／最小構成で動作。
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 2. 必要要件
+- PHP 8.1+
+- Laravel 10
+- Redis（推奨。代替: database キュー等も可）
+- Supervisor（または同等の常駐プロセス管理）
+- 外部CLIツール（例: Claude Code。任意のCLIに置換可能）
+- Slack App（Event Subscriptions有効化、Signing Secret取得）
+- Slack通知用のMCPサーバ
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 3. クイックスタート（最小構成）
+- 前提
+  - Slack Appを作成済みで、Signing Secretを取得している。
+  - 外部CLIツールが単体で動作確認済み。
+  - 外部CLIツールにSlack MCPサーバをインストール、設定を行い、Slackにメッセージ送信できる事を確認済み。
+  - 外部CLIツール用のプロファイルを用意、適切なディレクトリに配置済み。 `docs/profile.sample.json` がサンプルファイルなので、これを元にテキストを作成する。
+- 最小手順（概要）
+  1) リポジトリを取得し依存関係をインストール。
+  2) 環境変数（例: Slack署名シークレット、キュー接続、CLI実行コマンド/パス）を設定。
+  3) アプリケーションを起動（HTTPサーバ）し、キューワーカーを常駐起動。
+  4) SlackのEvent Subscriptionsで受信エンドポイントを設定し、URL Verificationを通過させる。
+  5) テスト用イベントを送信して疎通確認（ログ/通知で判定）。
+- 期待する動作
+  - URL Verificationが成功すること。
+  - イベント受信時にジョブがエンキューされ、外部CLIが呼び出されること。
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## 4. 詳細セットアップ（後日追記）
+- 4.1 リレー（本ツール）の設定
+- 4.2 CLIツール（Claude Code 等）の設定と差し替えガイド
+- 4.3 Slack側の設定（スコープ、Event Subscriptions、再試行）
 
-## Learning Laravel
+## 5. 運用（後日追記）
+- Supervisorによる常駐化
+- ログ/監視
+- レート制御と再試行ポリシー
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## 6. セキュリティと制限事項（後日追記）
+- Slack署名検証と時刻スキュー対策
+- 必要最小権限（スコープ）の付与
+- CLI実行権限/サンドボックス
+- 冪等性（重複配送対策）
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## 7. 免責事項
+本システムは十分なセキュリティ検証を経ていません。本システムの利用により直接的または間接的に発生したいかなる損失・損害についても、作者は一切の責任を負いません。自己の責任においてご利用ください。
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-## Laravel Sponsors
-
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
-
-### Premium Partners
-
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## 8. ライセンス
+MIT License。詳細は LICENSE ファイルを参照してください。
