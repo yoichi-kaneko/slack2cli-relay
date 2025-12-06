@@ -14,6 +14,6 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "web" middleware group. Make something great!
 |
 */
-Route::post('/slack/events', [SlacksController::class, 'event'])
+Route::post('/slack/events', [SlacksController::class, 'events'])
     ->withoutMiddleware(VerifyCsrfToken::class)
     ->middleware('slack.signature');
