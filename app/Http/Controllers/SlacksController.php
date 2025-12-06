@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Jobs\RelayCli;
 use App\Services\Slack\SlackEventService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

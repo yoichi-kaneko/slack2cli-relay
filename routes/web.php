@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\SlacksController;
+use App\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -14,4 +15,5 @@ use Illuminate\Support\Facades\Route;
 |
 */
 Route::post('/slack/events', [SlacksController::class, 'event'])
+    ->withoutMiddleware(VerifyCsrfToken::class)
     ->middleware('slack.signature');
