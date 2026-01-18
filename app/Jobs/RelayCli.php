@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Process;
 use Throwable;
 
 class RelayCli implements ShouldQueue
@@ -34,10 +35,16 @@ class RelayCli implements ShouldQueue
     public function handle(): void
     {
         $messageRaw = 'From Slack. Payload: ' . $this->payload;
-        $message = escapeshellarg($messageRaw);
 
+        $cliProcessPath = config('services.slack.cli_process_path');
         $cliCommand = config('services.slack.cli_command');
         $messageOption = config('services.slack.cli_command_message_option');
+        $otherOptions = config('services.slack.cli_command_other_options');
+
+        if (!is_string($cliProcessPath) || empty($cliProcessPath)) {
+            Log::error('Invalid slack cli process path config.');
+            return;
+        }
 
         if (!is_string($cliCommand) || empty($cliCommand)) {
             Log::error('Invalid slack cli command config.');
@@ -49,17 +56,34 @@ class RelayCli implements ShouldQueue
             return;
         }
 
-        $command = sprintf('%s %s %s', $cliCommand, $messageOption, $message);
+        // Build command array
+        $command = [$cliCommand, $messageOption, $messageRaw];
 
-        $output = [];
-        $exitCode = null;
-        exec($command, $output, $exitCode);
+        // Add other options if configured
+        if (is_string($otherOptions) && !empty($otherOptions)) {
+            $additionalOptions = preg_split('/\s+/', trim($otherOptions));
+            if (is_array($additionalOptions)) {
+                $command = array_merge($command, $additionalOptions);
+            }
+        }
 
-        Log::info('RelayCli executed.', [
-            'command' => $command,
-            'exit_code' => $exitCode,
-            'output' => implode("\n", $output),
-        ]);
+        // Execute command using Process facade
+        $result = Process::path($cliProcessPath)
+            ->forever()
+            ->run($command);
+
+        if ($result->successful()) {
+            Log::info('RelayCli Execution Success', [
+                'command' => implode(' ', $command),
+                'output' => $result->output(),
+            ]);
+        } else {
+            Log::error('RelayCli Execution Failed', [
+                'command' => implode(' ', $command),
+                'exit_code' => $result->exitCode(),
+                'error' => $result->errorOutput(),
+            ]);
+        }
     }
 
     /**

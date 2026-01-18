@@ -3,7 +3,10 @@
 namespace Tests\Unit\Jobs;
 
 use App\Jobs\RelayCli;
+use Illuminate\Process\PendingProcess;
+use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Process;
 use Mockery;
 use Tests\TestCase;
 
@@ -14,43 +17,47 @@ class RelayCliTest extends TestCase
      * @doesNotPerformAssertions
      * @return void
      */
-    public function handle_特殊な文字列でも無害化に成功していること(): void
+    public function handle_正常にコマンドが実行されること(): void
     {
-        // 無害なコマンドに差し替え（printf は副作用なしで標準出力に文字列を出す）
-        config()->set('services.slack.cli_command_format', 'printf %s');
+        config()->set('services.slack.cli_process_path', '/test/path');
+        config()->set('services.slack.cli_command', 'echo');
+        config()->set('services.slack.cli_command_message_option', '-n');
+        config()->set('services.slack.cli_command_other_options', null);
 
-        // Log Facade をスパイ（モック）する
-        Log::swap($spy = Mockery::spy(Log::getFacadeRoot()));
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
 
-        // 危険文字を多く含むペイロード（クォート崩れ・コマンド注入の検証）
-        $payload = 'name="Alice"; rm -rf / && echo hi `whoami` $(date) \'single\' "double" $HOME \\';
-        $payload .= "\nline2";
+        $processResult = Mockery::mock(ProcessResult::class);
+        $processResult->shouldReceive('successful')->andReturn(true);
+        $processResult->shouldReceive('output')->andReturn('test output');
 
-        $job = new RelayCli($payload);
+        $pendingProcess = Mockery::mock(PendingProcess::class);
+        $pendingProcess->shouldReceive('forever')->andReturnSelf();
+        $pendingProcess->shouldReceive('run')
+            ->once()
+            ->with(['echo', '-n', 'From Slack. Payload: test'])
+            ->andReturn($processResult);
+
+        Process::shouldReceive('path')
+            ->once()
+            ->with('/test/path')
+            ->andReturn($pendingProcess);
+
+        $job = new RelayCli('test');
         $job->handle();
 
-        // info ログが想定の形式で呼ばれていることを確認
-        $expectedOutput = 'From Slack. Payload: ' . $payload;
-
-        $spy->shouldHaveReceived('info')
+        $logSpy->shouldHaveReceived('info')
             ->once()
-            ->withArgs(function ($message, $context) use ($expectedOutput) {
-                if ($message !== 'RelayCli executed.') {
+            ->withArgs(function ($message, $context) {
+                if ($message !== 'RelayCli Execution Success') {
                     return false;
                 }
-                if (!isset($context['command'], $context['exit_code'], $context['output'])) {
+                if (!isset($context['command'], $context['output'])) {
                     return false;
                 }
-                // 無害なコマンドが使われていること（printf で始まる）
-                if (strpos($context['command'], 'printf ') !== 0) {
+                if ($context['command'] !== 'echo -n From Slack. Payload: test') {
                     return false;
                 }
-                // 正常終了
-                if ($context['exit_code'] !== 0) {
-                    return false;
-                }
-                // 出力が期待通り（生のペイロード）
-                return $context['output'] === $expectedOutput;
+                return $context['output'] === 'test output';
             });
     }
 
@@ -59,23 +66,229 @@ class RelayCliTest extends TestCase
      * @doesNotPerformAssertions
      * @return void
      */
-    public function handle_処理に失敗したときエラーログが保存されること(): void
+    public function handle_特殊な文字列でも安全に処理されること(): void
     {
-        // %s が含まれない無効なフォーマット
-        config()->set('services.slack.cli_command_format', 'printf');
+        config()->set('services.slack.cli_process_path', '/test/path');
+        config()->set('services.slack.cli_command', 'echo');
+        config()->set('services.slack.cli_command_message_option', '-n');
+        config()->set('services.slack.cli_command_other_options', null);
 
-        Log::swap($spy = Mockery::spy(Log::getFacadeRoot()));
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
 
-        $job = new RelayCli('any');
+        // 危険文字を多く含むペイロード（クォート崩れ・コマンド注入の検証）
+        $payload = 'name="Alice"; rm -rf / && echo hi `whoami` $(date) \'single\' "double" $HOME \\';
+        $payload .= "\nline2";
+
+        $expectedMessage = 'From Slack. Payload: ' . $payload;
+
+        $processResult = Mockery::mock(ProcessResult::class);
+        $processResult->shouldReceive('successful')->andReturn(true);
+        $processResult->shouldReceive('output')->andReturn('safe output');
+
+        $pendingProcess = Mockery::mock(PendingProcess::class);
+        $pendingProcess->shouldReceive('forever')->andReturnSelf();
+        $pendingProcess->shouldReceive('run')
+            ->once()
+            ->with(['echo', '-n', $expectedMessage])
+            ->andReturn($processResult);
+
+        Process::shouldReceive('path')
+            ->once()
+            ->with('/test/path')
+            ->andReturn($pendingProcess);
+
+        $job = new RelayCli($payload);
         $job->handle();
 
-        // エラーログが出る
-        $spy->shouldHaveReceived('error')
+        $logSpy->shouldHaveReceived('info')
             ->once()
-            ->with('Invalid slack cli command format config.');
+            ->with('RelayCli Execution Success', Mockery::type('array'));
+    }
 
-        // 成功ログは呼ばれていない
-        $spy->shouldNotHaveReceived('info');
+    /**
+     * @test
+     * @doesNotPerformAssertions
+     * @return void
+     */
+    public function handle_cli_process_pathが無効な場合エラーログが出力されること(): void
+    {
+        config()->set('services.slack.cli_process_path', '');
+        config()->set('services.slack.cli_command', 'echo');
+        config()->set('services.slack.cli_command_message_option', '-n');
+
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
+
+        $job = new RelayCli('test');
+        $job->handle();
+
+        $logSpy->shouldHaveReceived('error')
+            ->once()
+            ->with('Invalid slack cli process path config.');
+
+        $logSpy->shouldNotHaveReceived('info');
+    }
+
+    /**
+     * @test
+     * @doesNotPerformAssertions
+     * @return void
+     */
+    public function handle_cli_commandが無効な場合エラーログが出力されること(): void
+    {
+        config()->set('services.slack.cli_process_path', '/test/path');
+        config()->set('services.slack.cli_command', '');
+        config()->set('services.slack.cli_command_message_option', '-n');
+
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
+
+        $job = new RelayCli('test');
+        $job->handle();
+
+        $logSpy->shouldHaveReceived('error')
+            ->once()
+            ->with('Invalid slack cli command config.');
+
+        $logSpy->shouldNotHaveReceived('info');
+    }
+
+    /**
+     * @test
+     * @doesNotPerformAssertions
+     * @return void
+     */
+    public function handle_cli_command_message_optionが無効な場合エラーログが出力されること(): void
+    {
+        config()->set('services.slack.cli_process_path', '/test/path');
+        config()->set('services.slack.cli_command', 'echo');
+        config()->set('services.slack.cli_command_message_option', '');
+
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
+
+        $job = new RelayCli('test');
+        $job->handle();
+
+        $logSpy->shouldHaveReceived('error')
+            ->once()
+            ->with('Invalid slack cli command message option config.');
+
+        $logSpy->shouldNotHaveReceived('info');
+    }
+
+    /**
+     * @test
+     * @doesNotPerformAssertions
+     * @return void
+     */
+    public function handle_プロセス実行に失敗した場合エラーログが出力されること(): void
+    {
+        config()->set('services.slack.cli_process_path', '/test/path');
+        config()->set('services.slack.cli_command', 'echo');
+        config()->set('services.slack.cli_command_message_option', '-n');
+        config()->set('services.slack.cli_command_other_options', null);
+
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
+
+        $processResult = Mockery::mock(ProcessResult::class);
+        $processResult->shouldReceive('successful')->andReturn(false);
+        $processResult->shouldReceive('exitCode')->andReturn(1);
+        $processResult->shouldReceive('errorOutput')->andReturn('command failed');
+
+        $pendingProcess = Mockery::mock(PendingProcess::class);
+        $pendingProcess->shouldReceive('forever')->andReturnSelf();
+        $pendingProcess->shouldReceive('run')->andReturn($processResult);
+
+        Process::shouldReceive('path')->andReturn($pendingProcess);
+
+        $job = new RelayCli('test');
+        $job->handle();
+
+        $logSpy->shouldHaveReceived('error')
+            ->once()
+            ->withArgs(function ($message, $context) {
+                if ($message !== 'RelayCli Execution Failed') {
+                    return false;
+                }
+                if (!isset($context['command'], $context['exit_code'], $context['error'])) {
+                    return false;
+                }
+                if ($context['exit_code'] !== 1) {
+                    return false;
+                }
+                return $context['error'] === 'command failed';
+            });
+
+        $logSpy->shouldNotHaveReceived('info');
+    }
+
+    /**
+     * @test
+     * @doesNotPerformAssertions
+     * @return void
+     */
+    public function handle_cli_command_other_optionsが設定されている場合追加オプションが含まれること(): void
+    {
+        config()->set('services.slack.cli_process_path', '/test/path');
+        config()->set('services.slack.cli_command', 'slack');
+        config()->set('services.slack.cli_command_message_option', '-m');
+        config()->set('services.slack.cli_command_other_options', '--channel general --icon :ghost:');
+
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
+
+        $processResult = Mockery::mock(ProcessResult::class);
+        $processResult->shouldReceive('successful')->andReturn(true);
+        $processResult->shouldReceive('output')->andReturn('sent');
+
+        $pendingProcess = Mockery::mock(PendingProcess::class);
+        $pendingProcess->shouldReceive('forever')->andReturnSelf();
+        $pendingProcess->shouldReceive('run')
+            ->once()
+            ->with(['slack', '-m', 'From Slack. Payload: hello', '--channel', 'general', '--icon', ':ghost:'])
+            ->andReturn($processResult);
+
+        Process::shouldReceive('path')
+            ->once()
+            ->with('/test/path')
+            ->andReturn($pendingProcess);
+
+        $job = new RelayCli('hello');
+        $job->handle();
+
+        $logSpy->shouldHaveReceived('info')
+            ->once()
+            ->withArgs(function ($message, $context) {
+                return $message === 'RelayCli Execution Success'
+                    && str_contains($context['command'], '--channel general --icon :ghost:');
+            });
+    }
+
+    /**
+     * @test
+     * @doesNotPerformAssertions
+     * @return void
+     */
+    public function failed_例外情報がログに記録されること(): void
+    {
+        Log::swap($logSpy = Mockery::spy(Log::getFacadeRoot()));
+
+        $exception = new \Exception('Test exception message');
+
+        $job = new RelayCli('test payload');
+        $job->failed($exception);
+
+        $logSpy->shouldHaveReceived('error')
+            ->once()
+            ->withArgs(function ($message, $context) {
+                if ($message !== 'Job Failed: RelayCli') {
+                    return false;
+                }
+                if (!isset($context['payload'], $context['exception'], $context['trace'])) {
+                    return false;
+                }
+                if ($context['payload'] !== 'test payload') {
+                    return false;
+                }
+                return $context['exception'] === 'Test exception message';
+            });
     }
 
     protected function tearDown(): void
