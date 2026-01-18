@@ -17,6 +17,11 @@ class RelayCli implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * ジョブのタイムアウト秒数。LLMにアクセスするため、600秒と長めに設定
+     */
+    public $timeout = 600;
+
     private string $payload;
 
     /**
