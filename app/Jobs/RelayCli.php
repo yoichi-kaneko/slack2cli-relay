@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class RelayCli implements ShouldQueue
 {
@@ -32,16 +33,23 @@ class RelayCli implements ShouldQueue
      */
     public function handle(): void
     {
-        $optionRaw = 'From Slack. Payload: ' . $this->payload;
-        $option = escapeshellarg($optionRaw);
+        $messageRaw = 'From Slack. Payload: ' . $this->payload;
+        $message = escapeshellarg($messageRaw);
 
-        $format = config('services.slack.cli_command_format');
-        if (!is_string($format) || !str_contains($format, '%s')) {
-            Log::error('Invalid slack cli command format config.');
+        $cliCommand = config('services.slack.cli_command');
+        $messageOption = config('services.slack.cli_command_message_option');
+
+        if (!is_string($cliCommand) || empty($cliCommand)) {
+            Log::error('Invalid slack cli command config.');
             return;
         }
 
-        $command = sprintf($format, $option);
+        if (!is_string($messageOption) || empty($messageOption)) {
+            Log::error('Invalid slack cli command message option config.');
+            return;
+        }
+
+        $command = sprintf('%s %s %s', $cliCommand, $messageOption, $message);
 
         $output = [];
         $exitCode = null;
@@ -51,6 +59,18 @@ class RelayCli implements ShouldQueue
             'command' => $command,
             'exit_code' => $exitCode,
             'output' => implode("\n", $output),
+        ]);
+    }
+
+    /**
+     * Handle a job failure.
+     */
+    public function failed(Throwable $exception): void
+    {
+        Log::error('Job Failed: RelayCli', [
+            'payload' => $this->payload,
+            'exception' => $exception->getMessage(),
+            'trace' => $exception->getTraceAsString(),
         ]);
     }
 }
